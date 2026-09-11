@@ -4,3 +4,10 @@ PyYAML>=6.0.2
 pandas>=2.2.2
 numpy>=1.26.4
 kaggle>=1.6.17
+
+# Phase 2 — model fine-tuning
+sentence-transformers>=6.0.1
+torch>=2.2.0
+tqdm>=4.66.0
+datasets>=3.0.0
+accelerate>=1.0.0

@@ -16,7 +16,12 @@ from src.data.build_pairs import build_pairs_for_split, pair_summary, validate_p
 from src.data.download_resumes import ResumeDatasetError, acquire_resume_csv, load_resume_dataframe
 from src.data.generate_job_descriptions import write_job_descriptions
 from src.data.io_utils import load_config, resolve_path, write_json
-from src.data.split_dataset import assign_resume_splits, split_manifest
+from src.data.split_dataset import (
+    assign_jd_splits,
+    assign_resume_splits,
+    jd_split_manifest,
+    split_manifest,
+)
 from src.data.synthetic_resumes import generate_synthetic_resumes
 
 logger = logging.getLogger(__name__)
@@ -38,12 +43,14 @@ def load_or_synthesize_resumes(config: dict) -> tuple[pd.DataFrame, str]:
         resumes = load_resume_dataframe(csv_path, min_chars=min_chars)
         return resumes, f"kaggle_or_local:{csv_path}"
     except ResumeDatasetError as exc:
-        logger.warning("Real resume dataset unavailable (%s). Falling back to synthetic resumes.", exc)
+        logger.warning(
+            "Real resume dataset unavailable (%s). Falling back to synthetic resumes.", exc)
         n = int(config["synthetic_fallback"]["resumes_per_category"])
         resumes = generate_synthetic_resumes(n)
         short = resumes["resume_text"].str.len() < min_chars
         if short.any():
-            raise RuntimeError(f"{int(short.sum())} synthetic resumes are shorter than {min_chars} chars")
+            raise RuntimeError(
+                f"{int(short.sum())} synthetic resumes are shorter than {min_chars} chars")
         return resumes, "synthetic_fallback"
 
 
@@ -60,7 +67,8 @@ def assert_no_resume_leakage(train: pd.DataFrame, val: pd.DataFrame, test: pd.Da
     }
     leaked = {k: v for k, v in leaks.items() if v}
     if leaked:
-        raise RuntimeError(f"Resume IDs leaked across splits: { {k: v[:5] for k, v in leaked.items()} }")
+        raise RuntimeError(
+            f"Resume IDs leaked across splits: {{k: v[:5] for k, v in leaked.items()}}")
     logger.info(
         "No resume leakage. Unique resumes: train=%d val=%d test=%d",
         len(sets["train"]),
@@ -77,6 +85,7 @@ def write_pairs_csv(df: pd.DataFrame, path: Path) -> None:
         "label",
         "pair_type",
         "split",
+        "jd_split",
         "resume_category",
         "jd_category",
         "jd_title",
@@ -94,6 +103,13 @@ def run(config_path: str | None, force_synthetic: bool) -> dict:
     ratio = float(config["pairs"]["negative_to_positive_ratio"])
 
     jobs = write_job_descriptions(config)
+    jd_cfg = config["jd_split"]
+    jobs = assign_jd_splits(
+        jobs,
+        seed=seed,
+        test_per_category=int(jd_cfg["test_per_category"]),
+        stratify=bool(jd_cfg["stratify_by_category"]),
+    )
     if force_synthetic:
         n = int(config["synthetic_fallback"]["resumes_per_category"])
         resumes = generate_synthetic_resumes(n)
@@ -111,7 +127,8 @@ def run(config_path: str | None, force_synthetic: bool) -> dict:
         stratify=bool(split_cfg["stratify_by_category"]),
     )
 
-    processed_resumes_path = resolve_path(config["paths"]["cleaned_resumes_csv"])
+    processed_resumes_path = resolve_path(
+        config["paths"]["cleaned_resumes_csv"])
     processed_resumes_path.parent.mkdir(parents=True, exist_ok=True)
     resumes.to_csv(processed_resumes_path, index=False)
     jobs.to_csv(resolve_path(config["paths"]["cleaned_jds_csv"]), index=False)
@@ -120,21 +137,29 @@ def run(config_path: str | None, force_synthetic: bool) -> dict:
     pair_frames: dict[str, pd.DataFrame] = {}
     for split_name in ("train", "val", "test"):
         subset = resumes[resumes["split"] == split_name]
+        jd_pool = jobs[jobs["jd_split"] == (
+            "test" if split_name == "test" else "train_val")]
         if subset.empty:
             raise RuntimeError(f"Split '{split_name}' has zero resumes")
         pairs = build_pairs_for_split(
             subset,
-            jobs,
+            jd_pool,
             rng=rng,
             positives_per_resume=int(config["pairs"]["positives_per_resume"]),
             negative_ratio=int(config["pairs"]["negative_to_positive_ratio"]),
-            hard_negative_fraction=float(config["pairs"].get("hard_negative_fraction", 0.35)),
+            hard_negative_fraction=float(
+                config["pairs"].get("hard_negative_fraction", 0.35)),
         )
         validate_pairs(pairs, expected_ratio=ratio)
         pair_frames[split_name] = pairs
 
     train, val, test = pair_frames["train"], pair_frames["val"], pair_frames["test"]
     assert_no_resume_leakage(train, val, test)
+    train_jds = set(train["jd_id"].astype(str))
+    val_jds = set(val["jd_id"].astype(str))
+    test_jds = set(test["jd_id"].astype(str))
+    if test_jds & (train_jds | val_jds):
+        raise RuntimeError("Test JD IDs leaked into train or validation pairs")
 
     train_path = resolve_path(config["paths"]["train_pairs_csv"])
     val_path = resolve_path(config["paths"]["val_pairs_csv"])
@@ -144,6 +169,8 @@ def run(config_path: str | None, force_synthetic: bool) -> dict:
     write_pairs_csv(test, test_path)
 
     manifest = split_manifest(resumes)
+    manifest.update(jd_split_manifest(jobs))
+    manifest["jd_split_policy"] = "3 held-out test JDs per category; train and val share train_val JDs"
     write_json(resolve_path(config["paths"]["split_manifest"]), manifest)
 
     summary = {
@@ -151,6 +178,10 @@ def run(config_path: str | None, force_synthetic: bool) -> dict:
         "resume_source": source,
         "seed": seed,
         "job_descriptions": int(len(jobs)),
+        "jd_split_counts": {
+            split: int((jobs["jd_split"] == split).sum())
+            for split in ("train_val", "test")
+        },
         "resumes_total": int(resumes["resume_id"].nunique()),
         "resume_split_counts": manifest["resume_counts"],
         "pairs": {
@@ -163,6 +194,7 @@ def run(config_path: str | None, force_synthetic: bool) -> dict:
             "val_pairs": str(val_path),
             "test_pairs": str(test_path),
         },
+        "jd_split_policy": "3 held-out test JDs per category; train and val share train_val JDs",
     }
     write_json(resolve_path(config["paths"]["phase1_summary"]), summary)
     logger.info("Phase 1 complete.")

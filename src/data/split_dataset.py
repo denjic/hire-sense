@@ -11,6 +11,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 SPLITS = ("train", "val", "test")
+JD_SPLITS = ("train_val", "test")
 
 
 def _counts_for_category(n: int, train_ratio: float, val_ratio: float) -> tuple[int, int, int]:
@@ -111,4 +112,67 @@ def split_manifest(resumes_with_split: pd.DataFrame) -> dict:
         "resume_counts": {split: len(by_split[split]) for split in SPLITS},
         "resume_ids": {split: sorted(by_split[split]) for split in SPLITS},
         "category_by_split": category_split,
+    }
+
+
+def assign_jd_splits(
+    job_descriptions: pd.DataFrame,
+    seed: int,
+    test_per_category: int,
+    stratify: bool = True,
+) -> pd.DataFrame:
+    """Reserve a deterministic, category-balanced JD test pool."""
+    if test_per_category < 1:
+        raise ValueError("test_per_category must be >= 1")
+    required_columns = {"jd_id", "category"}
+    missing = required_columns - set(job_descriptions.columns)
+    if missing:
+        raise ValueError(f"Job descriptions missing columns: {sorted(missing)}")
+    if job_descriptions["jd_id"].duplicated().any():
+        raise ValueError("Duplicate jd_id values prevent a safe JD split")
+
+    rng = np.random.default_rng(seed)
+    assigned: dict[str, str] = {}
+    groups = (
+        job_descriptions.groupby("category", sort=True)
+        if stratify
+        else [("all", job_descriptions)]
+    )
+    for _, group in groups:
+        ids = group["jd_id"].astype(str).tolist()
+        if len(ids) <= test_per_category:
+            raise ValueError(
+                f"Category has {len(ids)} JDs; needs more than {test_per_category} "
+                "to retain a train_val pool"
+            )
+        rng.shuffle(ids)
+        for jd_id in ids[:test_per_category]:
+            assigned[jd_id] = "test"
+        for jd_id in ids[test_per_category:]:
+            assigned[jd_id] = "train_val"
+
+    out = job_descriptions.copy()
+    out["jd_split"] = out["jd_id"].astype(str).map(assigned)
+    if out["jd_split"].isna().any():
+        raise RuntimeError("Some job descriptions were not assigned a JD split")
+    counts = out["jd_split"].value_counts().to_dict()
+    logger.info("JD split counts: %s", {k: counts.get(k, 0) for k in JD_SPLITS})
+    return out
+
+
+def jd_split_manifest(job_descriptions_with_split: pd.DataFrame) -> dict:
+    """Return JD IDs and category counts grouped by the JD split."""
+    unique = job_descriptions_with_split[["jd_id", "category", "jd_split"]].drop_duplicates()
+    category_split = (
+        unique.groupby(["category", "jd_split"]).size().unstack(fill_value=0).to_dict()
+    )
+    return {
+        "jd_counts": {
+            split: int((unique["jd_split"] == split).sum()) for split in JD_SPLITS
+        },
+        "jd_ids": {
+            split: sorted(unique.loc[unique["jd_split"] == split, "jd_id"].astype(str))
+            for split in JD_SPLITS
+        },
+        "jd_category_by_split": category_split,
     }

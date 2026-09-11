@@ -103,6 +103,7 @@ def _pair_row(resume: pd.Series, jd: pd.Series, label: int, pair_type: str) -> d
         "resume_category": resume["category"],
         "resume_text": resume["resume_text"],
         "jd_id": jd["jd_id"],
+        "jd_split": jd["jd_split"],
         "jd_category": jd["category"],
         "jd_title": jd.get("title", ""),
         "jd_text": jd["jd_text"],

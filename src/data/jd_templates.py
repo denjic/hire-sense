@@ -640,6 +640,49 @@ JD_TEMPLATES: dict[str, list[tuple[str, str]]] = {
 }
 
 
+_ADDITIONAL_JD_FOCUSES: dict[str, tuple[str, ...]] = {
+    "Advocate": ("Legal Research Counsel", "Compliance Counsel", "Dispute Resolution Specialist", "Employment Law Advisor", "Intellectual Property Counsel", "Legal Operations Analyst"),
+    "Arts": ("Community Arts Educator", "Arts Operations Manager", "Collections Assistant", "Public Programs Curator", "Arts Marketing Coordinator", "Studio Manager"),
+    "Automation Testing": ("API Test Engineer", "Performance Test Engineer", "Test Framework Developer", "Accessibility Test Engineer", "Security Test Engineer", "Quality Engineering Lead"),
+    "Blockchain": ("Protocol Integration Engineer", "Blockchain Security Analyst", "Web3 QA Engineer", "Smart Contract Auditor", "Token Economics Analyst", "Blockchain Infrastructure Engineer"),
+    "Business Analyst": ("Data Business Analyst", "Product Business Analyst", "Process Improvement Analyst", "Requirements Analyst", "Business Systems Analyst", "Customer Insights Analyst"),
+    "Civil Engineer": ("Construction Planning Engineer", "QA/QC Civil Engineer", "Infrastructure Project Engineer", "Geotechnical Project Engineer", "Water Resources Engineer", "Site Safety Engineer"),
+    "Data Science": ("NLP Data Scientist", "Decision Science Analyst", "Data Science Platform Engineer", "Computer Vision Scientist", "Data Science Consultant", "Machine Learning Researcher"),
+    "Database": ("Database Reliability Engineer", "Database Migration Engineer", "Cloud Database Administrator", "Database Performance Engineer", "Data Modeling Engineer", "Database Security Engineer"),
+    "DevOps Engineer": ("Cloud Infrastructure Engineer", "Release Engineer", "DevSecOps Engineer", "Kubernetes Platform Engineer", "Observability Engineer", "Infrastructure Automation Engineer"),
+    "DotNet Developer": (".NET API Engineer", ".NET Integration Developer", ".NET Test Engineer", ".NET Cloud Developer", ".NET Desktop Developer", ".NET Solutions Architect"),
+    "ETL Developer": ("ETL Quality Engineer", "Data Warehouse Developer", "Pipeline Reliability Engineer", "Data Integration Consultant", "ETL Performance Engineer", "Master Data Engineer"),
+    "Electrical Engineering": ("Power Systems Engineer", "Electrical Commissioning Engineer", "Control Systems Engineer", "Protection Engineer", "Renewable Energy Engineer", "Electrical Maintenance Engineer"),
+    "Hadoop": ("Hadoop Operations Engineer", "Data Lake Engineer", "Streaming Data Engineer", "Spark Applications Engineer", "Big Data Solutions Architect", "Data Infrastructure Analyst"),
+    "Health and fitness": ("Health Coach", "Fitness Studio Manager", "Exercise Program Specialist", "Sports Rehabilitation Coach", "Group Exercise Instructor", "Wellness Content Specialist"),
+    "HR": ("People Operations Specialist", "Learning and Development Coordinator", "HR Compliance Analyst", "Compensation and Benefits Analyst", "Employee Relations Partner", "HRIS Administrator"),
+    "Java Developer": ("Java API Engineer", "Spring Boot Developer", "Java Application Support Engineer", "Java Performance Engineer", "Java Integration Specialist", "Java Technical Lead"),
+    "Mechanical Engineer": ("Mechanical Project Engineer", "Design Verification Engineer", "Reliability Mechanical Engineer", "Product Development Engineer", "Industrial Automation Engineer", "Mechanical Quality Engineer"),
+    "Network Security Engineer": ("Firewall Security Engineer", "Network Detection Engineer", "Cloud Network Security Engineer", "Incident Response Engineer", "Security Architecture Engineer", "Network Access Control Engineer"),
+    "Operations Manager": ("Operations Excellence Manager", "Supply Chain Operations Manager", "Customer Operations Manager", "Service Operations Lead", "Workforce Operations Manager", "Process Operations Analyst"),
+    "PMO": ("Portfolio Analyst", "Delivery Governance Manager", "Project Controls Analyst", "Transformation PMO Analyst", "Risk and Controls Manager", "PMO Reporting Specialist"),
+    "Python Developer": ("Python API Engineer", "Python Automation Engineer", "Python Data Services Developer", "Django Application Engineer", "Python Cloud Engineer", "Python Test Engineer"),
+    "SAP Developer": ("SAP Fiori Developer", "SAP ABAP Support Engineer", "SAP Data Migration Consultant", "SAP Basis Developer", "SAP Reporting Developer", "SAP Workflow Consultant"),
+    "Sales": ("Solutions Sales Executive", "Sales Operations Analyst", "Customer Growth Manager", "Enterprise Account Executive", "Channel Sales Manager", "Sales Enablement Specialist"),
+    "Testing": ("API QA Engineer", "Test Environment Analyst", "Release Quality Engineer", "Performance QA Engineer", "Security QA Analyst", "Test Lead"),
+    "Web Designing": ("Design Systems Specialist", "Web Accessibility Designer", "Content and UX Designer", "Interaction Designer", "Visual Designer", "Web Production Specialist"),
+}
+
+
+for _category, _focuses in _ADDITIONAL_JD_FOCUSES.items():
+    _base_body = JD_TEMPLATES[_category][0][1]
+    for _focus in _focuses:
+        JD_TEMPLATES[_category].append(
+            (
+                _focus,
+                f"This {_category} role focuses on {_focus.lower()}. "
+                "You will plan work, collaborate with stakeholders, document decisions, "
+                "and deliver reliable outcomes against clear quality and timeline expectations. "
+                f"The role builds on {_base_body.lower()}",
+            )
+        )
+
+
 def iter_job_descriptions() -> list[dict[str, str]]:
     """Flatten templates into records with stable jd_id values."""
     records: list[dict[str, str]] = []

@@ -24,6 +24,7 @@ data/processed/*
 data/README.md
 # Models (later phases)
 resume-jd-sbert/
+resume-jd-sbert-v2/
 *.bin
 *.pt
 *.onnx
@@ -39,3 +40,5 @@ Agents.md
 ROADMAP.md
 
 configs
+checkpoints
+training.log
