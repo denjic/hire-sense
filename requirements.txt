@@ -11,3 +11,6 @@ torch>=2.2.0
 tqdm>=4.66.0
 datasets>=3.0.0
 accelerate>=1.0.0
+
+# Phase 3 — retrieval infrastructure
+qdrant-client>=1.9.0

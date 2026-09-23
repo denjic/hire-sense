@@ -23,12 +23,13 @@ data/processed/*
 !data/processed/.gitkeep
 data/README.md
 # Models (later phases)
+models\resume-jd-jina
 resume-jd-sbert/
 resume-jd-sbert-v2/
 *.bin
 *.pt
 *.onnx
-
+models
 # IDE / OS
 .idea/
 .vscode/
@@ -42,3 +43,5 @@ ROADMAP.md
 configs
 checkpoints
 training.log
+
+results

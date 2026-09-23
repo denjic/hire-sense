@@ -218,6 +218,8 @@ def evaluate(
     corpus_csv: str,
     jd_split: str | None,
     output_csv: str,
+    device: str = "cpu",
+    max_seq_length: int = 3072,
 ) -> None:
     df = pd.read_csv(pairs_csv)
     required = {
@@ -266,8 +268,11 @@ def evaluate(
 
     logger.info("Evaluation setting: %s", setting)
 
-    logger.info("Loading model: %s", model_path)
-    model = SentenceTransformer(model_path)
+    logger.info("Loading model: %s (device=%s)", model_path, device)
+    model = SentenceTransformer(model_path, device=device, trust_remote_code=True)
+    if hasattr(model, "max_seq_length") and max_seq_length:
+        model.max_seq_length = max_seq_length
+        logger.info("Set model.max_seq_length to %d", model.max_seq_length)
 
     corpus_ids = sorted(corpus.keys())
     corpus_texts = [corpus[cid] for cid in corpus_ids]
@@ -275,7 +280,20 @@ def evaluate(
 
     queries = sorted(queries, key=lambda query: query.resume_id)
     query_texts = [q.resume_text for q in queries]
-    query_vecs = encode_texts(model, query_texts)
+
+    # Measure per-query encoding latency (single document inference) and collect embeddings
+    import time
+    latencies: list[float] = []
+    query_vec_list = []
+    if query_texts:
+        _ = model.encode([query_texts[0]], convert_to_numpy=True, normalize_embeddings=True)
+        for qt in query_texts:
+            t0 = time.perf_counter()
+            vec = model.encode([qt], convert_to_numpy=True, normalize_embeddings=True)
+            latencies.append((time.perf_counter() - t0) * 1000.0)
+            query_vec_list.append(vec[0])
+
+    query_vecs = np.array(query_vec_list)
 
     rows = []
     for q, qvec in zip(queries, query_vecs):
@@ -322,6 +340,9 @@ def evaluate(
         "Recall@5": results_df["recall_at_5"].mean(),
         "MRR": results_df["reciprocal_rank"].mean(),
         "NDCG@5": results_df["ndcg_at_5"].mean(),
+        "latency_mean_ms": float(np.mean(latencies)) if latencies else 0.0,
+        "latency_p50_ms": float(np.percentile(latencies, 50)) if latencies else 0.0,
+        "latency_p95_ms": float(np.percentile(latencies, 95)) if latencies else 0.0,
         "per_category_recall_at_3": {
             str(category): float(value)
             for category, value in results_df.groupby("category")["recall_at_3"].mean().items()
@@ -374,11 +395,29 @@ def main() -> None:
         default="retrieval_results.csv",
         help="Where to save the per-query results CSV.",
     )
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="Device to run evaluation on ('cpu' or 'cuda', default: cpu to avoid 4GB VRAM limit).",
+    )
+    parser.add_argument(
+        "--max-seq-length",
+        type=int,
+        default=3072,
+        help="Maximum sequence length (default: 3072).",
+    )
     args = parser.parse_args()
 
     try:
-        evaluate(args.model, args.pairs, args.corpus,
-                 args.jd_split, args.output)
+        evaluate(
+            args.model,
+            args.pairs,
+            args.corpus,
+            args.jd_split,
+            args.output,
+            device=args.device,
+            max_seq_length=args.max_seq_length,
+        )
     except Exception as exc:
         logger.error("Evaluation failed: %s", exc)
         sys.exit(1)

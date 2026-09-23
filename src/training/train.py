@@ -73,16 +73,17 @@ logger = logging.getLogger(__name__)
 class TrainingConfig:
     """All hyper-parameters for Phase 2 training."""
 
-    base_model: str = "all-MiniLM-L6-v2"
+    base_model: str = "jinaai/jina-embeddings-v2-base-en"
     train_csv: str = "data/processed/train_pairs.csv"
     val_csv: str = "data/processed/val_pairs.csv"
-    output_dir: str = "models/resume-jd-sbert"
+    output_dir: str = "models/resume-jd-jina"
     epochs: int = 5
-    batch_size: int = 16
+    batch_size: int = 4
     warmup_ratio: float = 0.1
     evaluation_steps: int = 50
     seed: int = 42
     fp16: bool = True
+    max_seq_length: int = 3072
 
 
 def load_config(config_path: str) -> TrainingConfig:
@@ -155,11 +156,15 @@ def build_triplets(csv_path: str, seed: int = 42) -> list[InputExample]:
             )
         )
 
+    if skipped > 0:
+        raise RuntimeError(
+            f"Pipeline guarantee violated: {skipped} positives had no hard negatives in {csv_path}!"
+        )
+
     logger.info(
-        "Triplets built: %d from %d positives (%d skipped — no hard neg for that JD).",
+        "Triplets built: %d from %d positives (0 skipped).",
         len(examples),
         len(positives),
-        skipped,
     )
     return examples
 
@@ -188,6 +193,7 @@ def build_val_evaluator(csv_path: str) -> EmbeddingSimilarityEvaluator:
         scores=eval_df["label"].astype(float).tolist(),
         name="val",
         show_progress_bar=True,
+        batch_size=4,
     )
 
 
@@ -206,7 +212,7 @@ def run_smoke_test(output_dir: str) -> None:
         If any sanity check fails.
     """
     logger.info("=== Smoke test: reloading model from %s ===", output_dir)
-    model = SentenceTransformer(output_dir)
+    model = SentenceTransformer(output_dir, trust_remote_code=True)
 
     it_resume = (
         "Python developer with 5 years of experience in FastAPI, PostgreSQL, "
@@ -284,7 +290,13 @@ def train(config: TrainingConfig) -> None:
     evaluator = build_val_evaluator(config.val_csv)
 
     # ── Model & loss ───────────────────────────────────────────────────────
-    model = SentenceTransformer(config.base_model, device=device)
+    model = SentenceTransformer(config.base_model, device=device, trust_remote_code=True)
+    if hasattr(config, "max_seq_length") and config.max_seq_length:
+        model.max_seq_length = config.max_seq_length
+        logger.info("Set model.max_seq_length to %d", model.max_seq_length)
+    if device == "cuda" and hasattr(model._first_module().auto_model, "gradient_checkpointing_enable"):
+        model._first_module().auto_model.gradient_checkpointing_enable()
+        logger.info("Enabled gradient checkpointing to reduce activation VRAM.")
     loss = MultipleNegativesRankingLoss(model=model)
 
     # ── Warmup ────────────────────────────────────────────────────────────
